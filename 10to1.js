@@ -1,425 +1,546 @@
-function getNextMinBondedDhxRequiredDaily(
-  resetToDefaultMultiplier,
-  defaultMinBondedDhxRequiredDaily,
-  currentMinBondedDhxRequiredDaily,
-  isIntervalMultiplierOn,
-  currentIntervalMultiplier,
-  remainingIntervalDays,
-) {
-  let nextMinBondedDhxRequiredDaily;
-  if (resetToDefaultMultiplier) {
-      nextMinBondedDhxRequiredDaily = defaultMinBondedDhxRequiredDaily;
+class Contracts {
+  tokenLockContractAddressMappings = {};
+
+  addTokenLockContractAddressMapping(contractData) {
+    this.tokenLockContractAddressMappings[contractData.lockContractAddress];
   }
 
-  if (isIntervalMultiplierOn) {
-      if (remainingIntervalDays == 0) {
-          // double at and of interval when turned on and until reset
-          nextMinBondedDhxRequiredDaily =
-              currentMinBondedDhxRequiredDaily * currentIntervalMultiplier;
-      } else {
-          nextMinBondedDhxRequiredDaily =
-              currentMinBondedDhxRequiredDaily;
-      }
-  } else {
-      nextMinBondedDhxRequiredDaily = currentMinBondedDhxRequiredDaily;
+  isLockContractOwner(lockContractAddress, userEthereumAddress) {
+    if (this.tokenLockContractAddressMappings[tokenLockContractAddress].lockContractOwner !== userEthereumAddress) {
+        // calling user was found not to be the owner of the tokenContractAddress
+        return false;
+    }
+    return true;
   }
 
-  return nextMinBondedDhxRequiredDaily;
-}
+  getByAccountTheLockInfo(userEthereumAddress) {
+    // TODO - on chain store by account and lock contract address for lookup
 
-function shouldStartNextInterval(remainingIntervalDays) {
-  if (remainingIntervalDays == 0) {
-      console.log('shouldStartNextInterval', true);
-      return true;
+    let res = {};
+  
+    Object.keys(this.tokenLockContractAddressMappings).forEach(function(key) {
+        // console.log(key, this.tokenLockContractAddressMappings[key]);
+  
+        if (this.isLockContractOwner(key, userEthereumAddress)) {
+          res[key] = tokenLockContractAddressMappings[key];
+        }
+    });
+  
+    return res;
   }
-  console.log('shouldStartNextInterval', false);
-  return false;
+
+  getByTokenLockContractAddressTheTokenCategoryAndRewardCategoryMultiplier() {
+    // TODO - call `getByAccountTheLockInfo` and return only the Token Category and Reward Category Multiplier properties
+  }
+
+  getByTokenCategoryAndDurationTheMiningDurationBonus(tokenCategory, duration) {
+    // TODO - fix this logic
+
+    // // customised by governance at any time
+    // let tokenCategoryAndDurationMappings = {
+    //     [1, 24]: 1.4,
+    // };
+  
+    // Object.keys(tokenCategoryAndDurationMappings).forEach(function(key) {
+    //     console.log(key, tokenCategoryAndDurationMappings[key]);
+  
+    //     if ([tokenCategory, duration] == key) {
+    //         res = tokenCategoryAndDurationMappings[tokenCategory, duration];
+    //     }
+    // });
+  
+    // return res;
+    return 1.4;
+  }
 }
 
-function hasMinBondedDhxRequiredDaily(bondedDHXCurrent, currentMinBondedDhxRequiredDaily) {
-  console.log('hasMinBondedDhxRequiredDaily: ', bondedDHXCurrent >= currentMinBondedDhxRequiredDaily);
-  return bondedDHXCurrent >= currentMinBondedDhxRequiredDaily;
+class Global {
+  // customised by governance at any time. this changes each year
+  // https://docs.google.com/spreadsheets/d/1W2AzOH9Cs9oCR8UYfYCbpmd9X7hp-USbYXL7AuwMY_Q/edit#gid=970997021
+  addRewardsAllowanceDHXDailyToHistoryForDate(rewardsAllowanceDHXDaily) {
+    let date = Date.now();
+    this.rewardsAllowanceDHXDailyHistory[date] = {
+      rewardsAllowanceDHXDaily: rewardsAllowanceDHXDaily || 5000,
+      date: date,
+    };
+  }
+
+  get getRewardsAllowanceDHXDaily() {
+    let date = Date.now();
+    return this.rewardsAllowanceDHXDailyHistory[date].rewardsAllowanceDHXDaily;
+  }
+
+  reduceRemainingRewardsAllowanceDHXDaily(dailyRewards) {
+    let date = Date.now();
+    this.rewardsAllowanceDHXDailyHistory[date] = {
+      rewardsAllowanceDHXDaily: this.rewardsAllowanceDHXDailyHistory[date].rewardsAllowanceDHXDaily - dailyRewards,
+      date: date,
+    };
+  }
+
+  // FIXME - we're passing in an array of users `usersBondingCurrently`, but only passing in a single
+  // user to process its rewards. we need to process all users for processing their rewards
+  runOnFinalize(usersBondingCurrently, usersMPowerCurrently, userRewards, global, globalBonding) {
+    if (
+      // check current time and only run at a specific hour of each day
+    ) {
+      // Calculate and store rewards Part 1/2 - Bonded DHX
+
+      usersBondingCurrently.forEach(function(userBonding) {
+        console.log('userBonding userId: ', userBonding.userId);
+
+        if (userBonding.isBondingDHX()) {
+          userBonding.decrementRemainingIntervalMultiplierDays();
+
+          let startNextInterval = userBonding.shouldStartNextInterval();
+          if (startNextInterval) {
+            userBonding.remainingIntervalMultiplierDays = globalBonding.intervalMultiplierDays;
+          }
+
+          let nextMinBondedDhxRequiredDaily = userBonding.getNextMinBondedDhxRequiredDaily(userBonding.remainingIntervalMultiplierDays, globalBonding);
+          console.log('nextMinBondedDhxRequiredDaily: ', nextMinBondedDhxRequiredDaily);
+
+          // Rewards Part 1/2 - Bonded DHX
+          // note: since combined rewards = bonding rewards + mPower rewards
+          // TODO - this is account-specific, pass the account as a parameter
+          let dailyRewardBondingDHX = getDayRewardFromBondingInDHX(
+            global.getRewardsAllowanceDHXDaily(),
+            globalBonding.globalBondingSettings.minBondedDHXDailyCurrent,
+          );
+          global.reduceRemainingRewardsAllowanceDHXDaily(dailyRewardBondingDHX);
+          console.log('dailyRewardBondingDHX', dailyRewardBondingDHX);
+          // reward distribution per user
+          // TODO - think how to distribute only after calculated their eligibility
+          // for both bonded DHX + mPower rewards instead of separately to reduce tx fees
+          userRewards.addUserBondedDHXToDistributionHistoryForDate(dailyRewardBondingDHX);
+        }
+      });
+
+      // Calculate and store rewards Part 2/2 - mPower DHX
+
+      usersMPowerCurrently.forEach(function(userMPower) {
+        if (userMPower.hasMPower()) {
+          // calc. DHX reward per mPower based on the total mPower of all accounts
+          let dailyRewardMPower = getDayRewardFromMPowerInDHX(
+            globalMPower.getTodayTotalMPower(),
+            global.getRewardsAllowanceDHXDaily(), // gets the remaining
+            globalMPower.globalMPowerSettings.minMPowerDailyCurrent,
+          );
+          global.reduceRemainingRewardsAllowanceDHXDaily(dailyRewardMPower);
+          console.log('dailyRewardMPower', dailyRewardMPower);
+          // reward distribution per user
+          userRewards.addUserMPowerToDistributionHistoryForDate(dailyRewardMPower);
+        }
+      });
+
+      // TODO - before distributing bonded DHX + mPower rewards in the code above,
+      // check if they have finished their cooling-off period, otherwise store the reward
+      // along with a flag unpaid, and then in future when check determines they have finished their
+      // cooling off period, we paid the last 7 days that are flagged as unpaid.
+
+      // coolingOffDaysRemaining = coolingOffDaysRemaining - 1;
+      // console.log('coolingOffDaysRemaining: ', coolingOffDaysRemaining);
+
+      // console.log('coolingOffDaysRemaining', coolingOffDaysRemaining);
+      // if (coolingOffDaysRemaining == 0) {
+      //     // TODO - distribute rewards after check if ready to distribute rewards
+      // }
+    }
+  }
 }
 
-function calcDayRewardInDHXBasedOnBondedDHX(bondedDHXCurrent) {
-  console.log('calcDayRewardInDHXBasedOnBondedDHX: ', 1 / bondedDHXCurrent)
-  return 1 / bondedDHXCurrent;
+class GlobalBonding {
+  updateGlobalBondingSettings(globalBondingSettings) {
+    this.globalBondingSettings = globalBondingSettings;
+  }
 }
 
-function getDayRewardInDHX(
-  bondedDHXCurrent,
-  currentMinBondedDhxRequiredDaily,
-) {
-  // no reward today
-  if (!hasMinBondedDhxRequiredDaily(bondedDHXCurrent, currentMinBondedDhxRequiredDaily)) {
+class GlobalMPower {
+  totalMPowerHistory = {};
+
+  updateGlobalMPowerSettings(globalMPowerSettings) {
+    this.globalMPowerSettings = globalMPowerSettings;
+  }
+
+  addTotalMPowerToHistoryForDate(totalMPowerCurrent) {
+    let date = Date.now();
+    this.totalMPowerHistory[date] = {
+      totalMPower: totalMPowerCurrent,
+      date: date,
+    };
+  }
+
+  getTodayTotalMPower() {
+    let date = Date.now();
+    return this.totalMPowerHistory[date].totalMPower;
+  }
+}
+
+class GlobalBondingSettings {
+  constructor({
+    intervalMultiplierEnabled, intervalMultiplierReset, intervalMultiplierCurrent, intervalMultiplierDays,
+    coolingOffPeriodDays, coolingOffDaysRemaining, minBondedDHXDailyDefault,
+    minBondedDHXDailyCurrent
+  }) {
+    // customised by governance at any time. should increase by multiplier at interval. (on == 1; off == 0)
+    this.intervalMultiplierEnabled = intervalMultiplierEnabled;
+    // customised by user at any time
+    this.intervalMultiplierReset = intervalMultiplierReset;
+    // customised by governance at any time or override automatically by multiplier. multiplier to increase min. bonded DHX required daily to DHX Mine after each interval
+    this.intervalMultiplierCurrent = intervalMultiplierCurrent;
+    // customised by governance at any time
+    this.intervalMultiplierDays = intervalMultiplierDays;
+    // customised by governance at any time
+    this.coolingOffPeriodDays = coolingOffPeriodDays;
+    this.coolingOffDaysRemaining = coolingOffDaysRemaining;
+    // customised by governance at any time. initial min. bonded DHX required daily to DHX Mine during interval
+    this.minBondedDHXDailyDefault = minBondedDHXDailyDefault;
+    this.minBondedDHXDailyCurrent = minBondedDHXDailyCurrent;
+  }
+}
+
+class GlobalMPowerSettings {
+  constructor({minMPowerDailyDefault, minMPowerDailyCurrent
+  }) {
+    this.minMPowerDailyDefault = minMPowerDailyDefault;
+    this.minMPowerDailyCurrent = minMPowerDailyCurrent;
+  }
+}
+
+class User {
+  constructor(userId) {
+    this.userId = userId;
+  }
+}
+
+class UserBonding extends User {
+  bondedDHXHistory = {};
+  remainingIntervalMultiplierDays = 5;
+
+  constructor(userId, globalBonding) {
+    super(userId); // call the super class constructor and pass in the name parameter
+
+    // customised by user at any time.
+    this.bondedDHXCurrent = 20;
+    this.remainingIntervalMultiplierDays = globalBonding.intervalMultiplierDays;
+  }
+
+  isBondingDHX() {
+    return this.bondedDHXCurrent > 0;
+  }
+
+  decrementRemainingIntervalMultiplierDays() {
+    this.remainingIntervalMultiplierDays -= 1;
+  }
+
+  shouldStartNextInterval() {
+    if (this.remainingIntervalMultiplierDays == 0) {
+        console.log('shouldStartNextInterval', true);
+        return true;
+    }
+    console.log('shouldStartNextInterval', false);
+    return false;
+  }
+
+  getNextMinBondedDhxRequiredDaily(remainingIntervalMultiplierDays, globalBonding) {
+    if (!globalBonding.globalBondingSettings) {
+      console.log('getNextMinBondedDhxRequiredDaily - unable to process prior to updating instance with globalBondingSettings');
+      return;
+    }
+
+    if (globalBonding.globalBondingSettings.intervalMultiplierReset) {
+        this.nextMinBondedDhxRequiredDaily = globalBonding.globalBondingSettings.minBondedDHXDailyDefault;
+    }
+  
+    if (globalBonding.globalBondingSettings.intervalMultiplierEnabled) {
+        if (remainingIntervalMultiplierDays == 0) {
+            // double at and of interval when turned on and until reset
+            this.nextMinBondedDhxRequiredDaily =
+                globalBonding.globalBondingSettings.minBondedDHXDailyCurrent * globalBonding.globalBondingSettings.intervalMultiplierCurrent;
+        } else {
+            this.nextMinBondedDhxRequiredDaily =
+                globalBonding.globalBondingSettings.minBondedDHXDailyCurrent;
+        }
+    } else {
+        this.nextMinBondedDhxRequiredDaily = globalBonding.globalBondingSettings.minBondedDHXDailyCurrent;
+    }
+  
+    return this.nextMinBondedDhxRequiredDaily;
+  }
+
+  hasMinBondedDhxRequiredDaily(minBondedDHXDailyCurrent) {
+    // TODO - does it need to be greater than `globalBonding.globalBondingSettings.minBondedDHXDailyCurrent` too if 
+    // `this.nextMinBondedDhxRequiredDaily` is not yet defined?
+    console.log('hasMinBondedDhxRequiredDaily: ', this.bondedDHXCurrent >= this.nextMinBondedDhxRequiredDaily && this.bondedDHXCurrent >= minBondedDHXDailyCurrent);
+    return this.bondedDHXCurrent >= this.nextMinBondedDhxRequiredDaily && this.bondedDHXCurrent >= minBondedDHXDailyCurrent;
+  }
+  
+  calcDayRewardInDHXBasedOnBondedDHX() {
+    console.log('calcDayRewardInDHXBasedOnBondedDHX: ', 1 / this.bondedDHXCurrent)
+    return 1 / this.bondedDHXCurrent;
+  }
+  
+  getDayRewardFromBondingInDHX(
+    rewardsAllowanceDHXDaily,
+    minBondedDHXDailyCurrent,
+  ) {
+    // no reward today
+    if (!hasMinBondedDhxRequiredDaily(minBondedDHXDailyCurrent)) {
       console.log('getDayRewardInDHX - insufficient bonded dhx daily')
       return 0;
+    }
+
+    let dailyReward = calcDayRewardInDHXBasedOnBondedDHX();
+    if (dailyReward > rewardsAllowanceDHXDaily) {
+        console.log('getDayRewardFromBondingInDHX - bonding reward cannot exceed daily DHX allowance')
+        return 0;
+    }
+
+    return dailyReward;
   }
 
-  return calcDayRewardInDHXBasedOnBondedDHX(bondedDHXCurrent);
-}
-
-function appendDayRewardFromBondingInDHX(
-  bondedDHXCurrent,
-  currentRewardsFromBonding,
-  currentMinBondedDhxRequiredDaily,
-  dhxAllowanceDaily,
-) {
-  let updatedRewardsFromBonding = currentRewardsFromBonding;
-
-  let dailyReward = getDayRewardInDHX(bondedDHXCurrent, currentMinBondedDhxRequiredDaily);
-  if (dailyReward > dhxAllowanceDaily) {
-      console.log('appendDayRewardFromBondingInDHX - bonding reward cannot exceed daily DHX allowance')
-      return updatedRewardsFromBonding;
+  addUserBondedDHXToHistoryForDate() {
+    let date = Date.now();
+    this.bondedDHXHistory[date] = {
+      bondedDHX: this.bondedDHXCurrent,
+      date: date,
+    };
   }
-  updatedRewardsFromBonding.push(dailyReward);
-  console.log('appendDayRewardFromBondingInDHX - updatedRewardsFromBonding: ', updatedRewardsFromBonding)
-
-  return updatedRewardsFromBonding;
 }
 
-/// ON-FINALIZE BLOCK LOOP THAT REPEATS DAILY
-function run(params){
-  let remainingIntervalDays = params.intervalDays;  // updated by below
-  let currentMinBondedDhxRequiredDaily = params.currentMinBondedDhxRequiredDaily || params.defaultMinBondedDhxRequiredDaily; // updated by below
-  let currentMinMPowerRequiredDaily = params.currentMinMPowerRequiredDaily || params.defaultMinMPowerRequiredDaily;
-  let remainingCoolingOffDays = params.remainingCoolingOffDays || params.coolingOffPeriodDays;  // updated by below
-  let currentRewardsFromBonding = params.currentRewardsFromBonding;        // updated below
-  let currentRewardsFromMPower = params.currentRewardsFromMPower;        // updated below
+class UserMPower extends User {
+  mPowerHistory = {};
 
-  remainingIntervalDays = remainingIntervalDays - 1;
+  constructor(userId) {
+    super(userId);
 
-  let startNextInterval = shouldStartNextInterval(remainingIntervalDays);
-  if (startNextInterval) {
-      remainingIntervalDays = params.intervalDays;
-      // TODO - store updated `remainingIntervalDays` in state
+    this.mPowerCurrent = 5;
   }
 
-  currentMinBondedDhxRequiredDaily = getNextMinBondedDhxRequiredDaily(
-      params.resetToDefaultMultiplier,
-      params.defaultMinBondedDhxRequiredDaily,
-      currentMinBondedDhxRequiredDaily,
-      params.isIntervalMultiplierOn,
-      params.currentIntervalMultiplier,
-      remainingIntervalDays
-  );
-  console.log('currentMinBondedDhxRequiredDaily: ', currentMinBondedDhxRequiredDaily);
-  // TODO - store updated `currentMinBondedDhxRequiredDaily` in storage
-
-  console.log('bondedDHXCurrent', params.bondedDHXCurrent)
-
-  // Rewards Part 1/2 - Bonded DHX
-  // note: since combined rewards = bonding rewards + mPower rewards
-  // TODO - this is account-specific, pass the account as a parameter
-  currentRewardsFromBonding = appendDayRewardFromBondingInDHX(
-      params.bondedDHXCurrent,
-      currentRewardsFromBonding,
-      currentMinBondedDhxRequiredDaily,
-      params.dhxAllowanceDaily,
-  );
-  console.log('currentRewardsFromBonding', currentRewardsFromBonding);
-
-  // TODO - store latest `currentRewardsFromBonding` in state
-
-  // combination of rewards include:
-  // - bonding
-  // - mPower
-
-  // Rewards Part 2/2 - mPower DHX
-
-  // TODO
-  // - get the daily DHX reward allowance (or remaining)
-  //     we've just calculated the proportion of bonding rewards,
-  //     now we calculate the remaining dhx that we have from the
-  //     dhx daily allowance that we can still use for mPower rewards
-  let lengthCurrentRewardsFromBonding = currentRewardsFromBonding.length;
-  let lastElem = currentRewardsFromBonding[lengthCurrentRewardsFromBonding-1];
-  let remainingDHXAllowanceDaily = params.dhxAllowanceDaily - lastElem;
-
-  // - calc. DHX reward per mPower based on the total mPower of all accounts
-  currentRewardsFromMPower = appendDayRewardFromMPowerInDHX(
-      params.mPowerForAccountCurrent,
-      currentRewardsFromMPower,
-      currentMinMPowerRequiredDaily,
-      remainingDHXAllowanceDaily,
-      params.totalDayMPowerAllAccountsCurrent,
-  );
-  console.log('currentRewardsFromMPower', currentRewardsFromMPower);
-
-  remainingCoolingOffDays = remainingCoolingOffDays - 1;
-  console.log('remainingCoolingOffDays: ', remainingCoolingOffDays);
-
-  console.log('remainingCoolingOffDays', remainingCoolingOffDays);
-  if (remainingCoolingOffDays == 0) {
-      // TODO - distribute rewards after check if ready to distribute rewards
+  hasMPower() {
+    return this.mPowerCurrent > 0;
   }
 
-  return {
-      remainingIntervalDays,
-      currentMinBondedDhxRequiredDaily,
-      currentMinMPowerRequiredDaily,
-      remainingCoolingOffDays,
-      currentRewardsFromBonding,
-      currentRewardsFromMPower,
-  };
-}
-
-function updateParams(res, params) {
-  params.remainingIntervalDays = res.remainingIntervalDays;
-  params.currentMinBondedDhxRequiredDaily = res.currentMinBondedDhxRequiredDaily;
-  params.currentMinMPowerRequiredDaily = res.currentMinMPowerRequiredDaily;
-  params.remainingCoolingOffDays = res.remainingCoolingOffDays;
-  params.currentRewardsFromBonding = res.currentRewardsFromBonding;
-  params.currentRewardsFromMPower = res.currentRewardsFromMPower;
-  return params;
-}
-
-// function getByAccountTheLockInfo() {
-//     return {
-//         lockContractOwner: 0x001,        // Ethereum address of lock smart contract
-//         lockContractAddress: 0x789,      // Ethereum lock contract address
-//         dataHighwayPublicKey: 0x123,     // DataHighway public key
-//         tokenContractAddress: 0x456,     // address of locked token type (i.e. MXC)
-//         tokenERC20Amount: 100,           // amount of tokens locked
-//         lockReturn: 24,                  // lock duration
-//     };
-// }
-
-function isLockContractOwner(tokenAddress, userEthereumAddress) {
-  if (tokenAddress.lockContractOwner !== userEthereumAddress) {
-      // calling user was found not to be the owner of the tokenContractAddress
-      return false;
+  hasMinMPowerRequiredDaily(minMPowerDailyCurrent) {
+    console.log('hasMinMPowerRequiredDaily: ', this.mPowerCurrent >= minMPowerDailyCurrent);
+    return this.mPowerCurrent >= minMPowerDailyCurrent;
   }
-  return true;
-}
-
-function getByTokenTheTokenCategoryAndRewardCategoryMultiplier(tokenAddress, userEthereumAddress) {
-  // customised by governance at any time
-  let tokenAddressMappings = {
-      // tokenContractAddress
-      '0x456': {
-          lockContractOwner: '0x001',
-          dataHighwayPublicKey: '0x123',
-          tokenName: 'mxc',
-          tokenCategory: 1,
-          tokenContractAddress: '0x456',
-          tokenERC20Amount: 100,
-          rewardCategoryMultiplier: 1.0,
-          lockReturn: 24,
-      }
-  };
-
-  let res = {};
-
-  let isOwner = isLockContractOwner(tokenAddressMappings[tokenAddress], userEthereumAddress);
-  if (!isOwner) {
-      return res;
+  
+  // WIP: calculating the mPower of an account on a day
+  calcDayMPowerForAccount(dataHighwayPublicKey, userEthereumAddress) {
+    // initialize
+    let mPower = 0;
+    let MB = 0;
+    let MSB = 0;
+    let MDB = 0;
+  
+    // Token Mining
+  
+    // for token MXC
+    let tokenTheTokenCategoryAndRewardCategoryMultiplier = {};
+    if (isLockContractOwner(userEthereumAddress)) {
+        tokenTheTokenCategoryAndRewardCategoryMultiplier = getByTokenLockContractAddressTheTokenCategoryAndRewardCategoryMultiplier('0x456')
+  
+        // Mining Base (MB)
+        if (tokenTheTokenCategoryAndRewardCategoryMultiplier.tokenERC20Amount > 0) {
+            MB += tokenTheTokenCategoryAndRewardCategoryMultiplier.tokenERC20Amount * tokenTheTokenCategoryAndRewardCategoryMultiplier.rewardCategoryMultiplier;
+        }
+  
+        // Mining Speed Bonus (MSB)
+        MDB = getByTokenCategoryAndDurationTheMiningDurationBonus(1, 24)
+        MSB = MDB;
+    }
+  
+    // Hardware Mining
+    // IGNORE Hardware for the moment
+  
+    // // TODO - replace with function to fetch this info
+    // // customised by governance at any time
+    // let deviceModelsSHM = {
+    //     m2Pro: {
+    //         v1: 500000, // SHM
+    //     },
+    // }
+    // // count devices added by user
+    // let deviceModelsCount = {
+    //     m2Pro: {
+    //         v1: 1
+    //     },
+    // }
+  
+    // let SHM = 0;
+  
+    // Object.keys(deviceModelsSHM).forEach(function(key) {
+    //     console.log(key, deviceModelsSHM[key]);
+  
+    //     if (deviceModelsCount[key] > 0) {
+    //         SHM += deviceModelsCount[key] * deviceModelsSHM[key];
+    //     }
+    // });
+  
+    // TODO
+    // mPower = (MB * MSB) + MHB + SHM;
+    mPower = MB * MSB; // Ignore hardware for the moment (i.e. ignore `+ MHB + SHM`)
+  
+    // saveMPowerForAccountOnDate(dataHighwayPublicKey, currentDate);
+  
+    return mPower;
   }
-
-  Object.keys(tokenAddressMappings).forEach(function(key) {
-      console.log(key, tokenAddressMappings[key]);
-
-      if (tokenAddress == key) {
-          res = tokenAddressMappings[key];
-      }
-  });
-
-  return res;
-}
-
-function getByTokenCategoryAndDurationTheMiningDurationBonus(tokenCategory, duration) {
-  // // customised by governance at any time
-  // let tokenCategoryAndDurationMappings = {
-  //     [1, 24]: 1.4,
-  // };
-
-  // Object.keys(tokenCategoryAndDurationMappings).forEach(function(key) {
-  //     console.log(key, tokenCategoryAndDurationMappings[key]);
-
-  //     if ([tokenCategory, duration] == key) {
-  //         res = tokenCategoryAndDurationMappings[tokenCategory, duration];
-  //     }
-  // });
-
-  // return res;
-  return 1.4;
-}
-
-function hasMinMPowerRequiredDaily(mPowerCurrentForAccount, currentMinMPowerRequiredDaily) {
-  console.log('hasMinMPowerRequiredDaily: ', mPowerCurrentForAccount >= currentMinMPowerRequiredDaily);
-  return mPowerCurrentForAccount >= currentMinMPowerRequiredDaily;
-}
-
-// calculating the mPower of an account on a day
-function calcDayMPowerForAccount(dataHighwayPublicKey, userEthereumAddress) {
-  // initialize
-  let mPower = 0;
-  let MB = 0;
-  let MSB = 0;
-  let MDB = 0;
-
-  // Token Mining
-
-  // for token MXC
-  let tokenTheTokenCategoryAndRewardCategoryMultiplier = {};
-  if (isLockContractOwner(userEthereumAddress)) {
-      tokenTheTokenCategoryAndRewardCategoryMultiplier = getByTokenTheTokenCategoryAndRewardCategoryMultiplier('0x456')
-
-      // Mining Base (MB)
-      if (tokenTheTokenCategoryAndRewardCategoryMultiplier.tokenERC20Amount > 0) {
-          MB += tokenTheTokenCategoryAndRewardCategoryMultiplier.tokenERC20Amount * tokenTheTokenCategoryAndRewardCategoryMultiplier.rewardCategoryMultiplier;
-      }
-
-      // Mining Speed Bonus (MSB)
-      MDB = getByTokenCategoryAndDurationTheMiningDurationBonus(1, 24)
-      MSB = MDB;
+  
+  calcDayRewardInDHXBasedOnMPower(
+    mPowerDayTotalAllAccountsCurrent,
+    rewardsAllowanceDHXDailyRemaining
+  ) {
+    // DHX per MPower available to be disitributed
+    let dhxPerMPower = rewardsAllowanceDHXDailyRemaining / mPowerDayTotalAllAccountsCurrent
+    let dayReward = this.mPowerCurrent * dhxPerMPower;
+  
+    console.log('dayReward based on mPower', dayReward);
+    return dayReward;
   }
-
-  // Hardware Mining
-  // IGNORE Hardware for the moment
-
-  // // TODO - replace with function to fetch this info
-  // // customised by governance at any time
-  // let deviceModelsSHM = {
-  //     m2Pro: {
-  //         v1: 500000, // SHM
-  //     },
-  // }
-  // // count devices added by user
-  // let deviceModelsCount = {
-  //     m2Pro: {
-  //         v1: 1
-  //     },
-  // }
-
-  // let SHM = 0;
-
-  // Object.keys(deviceModelsSHM).forEach(function(key) {
-  //     console.log(key, deviceModelsSHM[key]);
-
-  //     if (deviceModelsCount[key] > 0) {
-  //         SHM += deviceModelsCount[key] * deviceModelsSHM[key];
-  //     }
-  // });
-
-  // TODO
-  // mPower = (MB * MSB) + MHB + SHM;
-  mPower = MB * MSB; // Ignore hardware for the moment (i.e. ignore `+ MHB + SHM`)
-
-  // saveMPowerForAccountOnDate(dataHighwayPublicKey, currentDate);
-
-  return mPower;
-}
-
-function calcDayRewardInDHXBasedOnMPower(
-  mPowerForAccountCurrent,
-  totalDayMPowerAllAccountsCurrent,
-  remainingDHXAllowanceDaily
-) {
-  console.log('calcDayRewardInDHXBasedOnMPower: ', mPowerForAccountCurrent);
-  // DHX per MPower available to be disitributed
-  let dhxPerMPower = remainingDHXAllowanceDaily / totalDayMPowerAllAccountsCurrent
-  let dayReward = mPowerForAccountCurrent * dhxPerMPower;
-
-  console.log('dayReward based on mPower', dayReward);
-  return dayReward;
-}
-
-function getDayRewardInDHXForMPower(
-  mPowerForAccountCurrent,
-  currentMinMPowerRequiredDaily,
-  totalDayMPowerAllAccountsCurrent,
-  remainingDHXAllowanceDaily
-) {
-  // insufficient mPower daily for account for DHX reward based on it
-  if (!hasMinMPowerRequiredDaily(mPowerForAccountCurrent, currentMinMPowerRequiredDaily)) {
-      console.log('getDayRewardInDHXForMPower - insufficient mPower for account daily')
+  
+  getDayRewardFromMPowerInDHX(
+    mPowerDayTotalAllAccountsCurrent,
+    rewardsAllowanceDHXDailyRemaining,
+    minMPowerDailyCurrent,
+  ) {
+    // insufficient mPower daily for account for DHX reward based on it
+    if (!hasMinMPowerRequiredDaily(minMPowerDailyCurrent)) {
+      console.log('getDayRewardFromMPowerInDHX - insufficient mPower for account daily')
       return 0;
+    }
+
+    let dailyReward = calcDayRewardInDHXBasedOnMPower(
+        mPowerDayTotalAllAccountsCurrent,
+        rewardsAllowanceDHXDailyRemaining
+    );
+    if (dailyReward > rewardsAllowanceDHXDailyRemaining) {
+        console.log('getDayRewardFromMPowerInDHX - mPower reward cannot exceed daily DHX allowance')
+        return 0;
+    }
+
+    return dailyReward;
   }
 
-  return calcDayRewardInDHXBasedOnMPower(
-      mPowerForAccountCurrent,
-      totalDayMPowerAllAccountsCurrent,
-      remainingDHXAllowanceDaily
-  );
-}
-
-function appendDayRewardFromMPowerInDHX(
-  mPowerForAccountCurrent,
-  currentRewardsFromMPower,
-  currentMinMPowerRequiredDaily,
-  remainingDHXAllowanceDaily,
-  totalDayMPowerAllAccountsCurrent,
-) {
-  let updatedRewardsFromMPower = currentRewardsFromMPower;
-
-  let dailyReward = getDayRewardInDHXForMPower(
-      mPowerForAccountCurrent,
-      // currentRewardsFromMPower,
-      currentMinMPowerRequiredDaily,
-      totalDayMPowerAllAccountsCurrent,
-      remainingDHXAllowanceDaily
-  );
-  if (dailyReward > remainingDHXAllowanceDaily) {
-      console.log('appendDayRewardFromMPowerInDHX - mPower reward cannot exceed daily DHX allowance')
-      return updatedRewardsFromMPower;
+  addUserMPowerToHistoryForDate() {
+    let date = Date.now();
+    this.mPowerHistory[date] = {
+      mPower: this.mPowerCurrent,
+      date: date,
+    };
   }
-  updatedRewardsFromMPower.push(dailyReward);
-  console.log('appendDayRewardFromMPowerInDHX - updatedRewardsFromMPower: ', updatedRewardsFromMPower)
 
-  return updatedRewardsFromMPower;
+  // sum total mPower of all accounts
+  //
+  // TODO - we need this so we can calculate the reward proportion based on a
+  // user's mPower. there could be thousands to process each day. maybe only
+  // consider those that have registered their address somehow?
+  static calcTotalMPowerToday() {
+    let dateNow = Date.now();
+    let totalMPowerToday = 0;
+    for (var dateKey in this.mPowerHistory) {
+      if (this.mPowerHistory.hasOwnProperty(dateNow) && dateKey == dateNow) {  
+        totalMPowerToday += this.mPowerHistory[dateNow].mPower;
+      }
+    }
+    return totalMPowerToday;
+  }
 }
 
-// - sum total mPower of all accounts
-//   - TODO - how are we going to do this, there could be thousands to process each day.
-//   -        but note that a proportion of the mPower
-//   -        maybe only those that have 'registered' their address somehow so we know we need to consider them
-function getDayTotalMPowerAllAccounts() {
-  return 5000000; // this value is made up
+class UserRewards extends User {
+  rewardsDistributionHistory = {};
+
+  constructor(userId) {
+    super(userId);
+  }
+
+  addUserBondedDHXToDistributionHistoryForDate(rewardForBondedDHX) {
+    let date = Date.now();
+    this.rewardsDistributionHistory[date] = {
+      rewardForMPower: this.rewardsDistributionHistory[date].rewardForMPower,
+      rewardForBondedDHX: rewardForBondedDHX,
+      date: date,
+    };
+  }
+
+  addUserMPowerToDistributionHistoryForDate(rewardForMPower) {
+    let date = Date.now();
+    this.rewardsDistributionHistory[date] = {
+      rewardForMPower: rewardForMPower,
+      rewardForBondedDHX: this.rewardsDistributionHistory[date].rewardForBondedDHX,
+      date: date,
+    };
+  }
 }
 
-// function saveMPowerForAccountOnDate(dataHighwayPublicKey, currentDate) {
-//     let mPowerForAccountOnDate = {
-//         [currentDate]: {
-//             dataHighwayPublicKey:,
-//             mPower: ,
-//         }
-//     };
-// }
+let global = new Global();
+global.addRewardsAllowanceDHXDailyToHistoryForDate();
+console.log('global.rewardsAllowanceDHXDailyHistory: ', global.rewardsAllowanceDHXDailyHistory);
 
-let params = {
-  bondedDHXCurrent: 20,      // customised by user at any time.
-  mPowerForAccountCurrent: 5,
-  isIntervalMultiplierOn: 1, // customised by governance at any time. should increase by multiplier at interval. (on == 1; off == 0)
-  currentIntervalMultiplier: 2, // customised by governance at any time or override automatically by multiplier. multiplier to increase min. bonded DHX required daily to DHX Mine after each interval
-  intervalDays: 5,              // customised by governance at any time
-  defaultMinBondedDhxRequiredDaily: 10, // customised by governance at any time. initial min. bonded DHX required daily to DHX Mine during interval
-  currentMinBondedDhxRequiredDaily: 10,
-  // TODO
-  defaultMinMPowerRequiredDaily: 5,
-  currentMinMPowerRequiredDaily: 5,
-  coolingOffPeriodDays: 7,    // customised by governance at any time
-  remainingCoolingOffDays: 7,
-  resetToDefaultMultiplier: 0, // customised by user at any time
-  // https://docs.google.com/spreadsheets/d/1W2AzOH9Cs9oCR8UYfYCbpmd9X7hp-USbYXL7AuwMY_Q/edit#gid=970997021
-  dhxAllowanceDaily: 5000, // customised by governance at any time. this changes each year
-  // currentMPowerForPerAccountOnDate: {},
-  currentRewardsFromBonding: [],
-  currentRewardsFromMPower: [],
-  totalDayMPowerAllAccountsCurrent: getDayTotalMPowerAllAccounts()
-}
-let res;
+let globalMPowerSettings = GlobalMPowerSettings({
+  minMPowerDailyDefault: 5,
+  minMPowerDailyCurrent: 5,
+});
 
-// round 1
-res = run(params);
-params = updateParams(res, params);
+let globalMPower = new GlobalMPower();
+globalMPower.updateGlobalMPowerSettings(globalMPowerSettings);
 
-// round 2
-// new params
-params.bondedDHXCurrent = 30;
-// params.mPowerForAccountCurrent = calcDayMPowerForAccount('0x123', '0x001');
-res = run(params);
-params = updateParams(res, params);
+// calculate total mPower of all users
+let totalMPowerCurrent = UserMPower.calcTotalMPowerToday();
+globalMPower.addTotalMPowerToHistoryForDate(totalMPowerCurrent)
 
-// amountToMine*70 = bondedDhxRequired
-// amountToDHXMine (i.e. 7 DHX) = nextMinBondedDhxRequiredDaily * durationInDays (7) / bondedDhxRequiredDailyDuringInterval
+let globalBondingSettings = new GlobalBondingSettings({
+  intervalMultiplierEnabled: 1, // customised by governance at any time. should increase by multiplier at interval. (on == 1; off == 0)
+  intervalMultiplierReset: 0, // customised by user at any time
+  intervalMultiplierCurrent: 2, // customised by governance at any time or override automatically by multiplier. multiplier to increase min. bonded DHX required daily to DHX Mine after each interval
+  intervalMultiplierDays: 5, // customised by governance at any time. days that we will use the current interval multplier value i.e. 10:1
+  coolingOffPeriodDays: 7, // customised by governance at any time
+  coolingOffDaysRemaining: 7,
+  minBondedDHXDailyDefault: 10, // customised by governance at any time. initial min. bonded DHX required daily to DHX Mine during interval
+  minBondedDHXDailyCurrent: 10,
+});
+
+let globalBonding = new GlobalBonding();
+globalBonding.updateGlobalBondingSettings(globalBondingSettings);
+
+let user1Bonding = new UserBonding('0x123');
+console.log('user1Bonding.bondedDHXCurrent: ', user1Bonding.bondedDHXCurrent);
+user1Bonding.addUserBondedDHXToHistoryForDate(globalBonding)
+console.log('user1Bonding.bondedDHXHistory: ', user1Bonding.bondedDHXHistory);
+
+let usersBondingCurrently = [user1Bonding];
+
+let user1MPower = new UserMPower('0x123');
+console.log('user1MPower.mPowerCurrent: ', user1MPower.mPowerCurrent);
+user1MPower.mPowerCurrent = 5;
+user1MPower.addUserMPowerToHistoryForDate();
+console.log('user1MPower.mPowerHistory: ', user1MPower.mPowerHistory);
+
+let usersMPowerCurrently = [user1MPower];
+
+let userRewards = new UserRewards('0x123');
+// let usersForRewards = [userRewards];
+
+global.runOnFinalize(usersBondingCurrently, usersMPowerCurrently, userRewards, global, globalBonding, globalMPower);
+
+console.log('userRewards.rewardsDistributionHistory: ', userRewards.rewardsDistributionHistory);
+
+// TODO - repeat calling `global.runOnFinalize` to emulate multiple blocks after changing various parameters
+// of the users (i.e. their bonded DHX or mPower, etc)
+
+let contracts = new Contracts();
+let user1EthereumAddress = '0x001';
+let user1TokenLockContract1Data = {
+  lockContractOwner: '0x001', // Ethereum address of lock smart contract
+  lockContractAddress: '0x789', // Ethereum lock contract address
+  dataHighwayPublicKey: '0x123', // DataHighway public key
+  tokenName: 'mxc',
+  tokenCategory: 1,
+  tokenContractAddress: '0x456', // address of locked token type (i.e. MXC)
+  tokenERC20Amount: 100, // amount of tokens locked
+  rewardCategoryMultiplier: 1.0,
+  lockReturn: 24, // lock duration
+};
+contracts.addTokenLockContractAddressMapping(user1TokenLockContract1Data);
+let lockInfo = contracts.getByAccountTheLockInfo(user1EthereumAddress);
+let isOwner = contracts.isLockContractOwner(lockInfo.lockContractAddress, user1EthereumAddress);
